@@ -27,8 +27,15 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 #over{text-align:center;font-size:28px;color:#d4006a;min-height:36px;font-variant-numeric:tabular-nums}
 #strobe{position:fixed;inset:0;z-index:50;display:none}
 #stop{position:relative;z-index:60}
-.take{border-top:1px solid var(--line);padding:10px 0}
-.take audio{width:100%;margin-top:6px}
+.take{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fdfdf9}
+.take audio,.vrow audio{width:100%;margin-top:6px}
+.thead{font-size:15px}
+.thead span{color:var(--mute);font-size:13px}
+details.psec{border-top:1px solid var(--line)}
+details.psec>summary{cursor:pointer;padding:12px 0;font-size:17px;font-weight:600}
+details.sub{margin-top:8px;border-top:1px dashed var(--line)}
+details.sub>summary{cursor:pointer;padding:8px 0;font-size:15px}
+.vrow{border-top:1px solid var(--line);padding:8px 0}
 .meta{font-size:13px;color:var(--mute)}
 .msg{color:#b00020;min-height:20px;font-size:14px}
 .proj{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0}
@@ -71,7 +78,7 @@ textarea{width:100%;min-height:110px;font-size:15px;padding:8px;border:1px solid
   </div>
   <div class="card">
     <strong>Takes</strong>
-    <label for="voice">Voice for read backs</label>
+    <label for="voice">Voice for new voice versions</label>
     <select id="voice"><option value="">Loading voices...</option></select>
     <div id="libmsg" class="msg"></div>
     <div id="lib" class="meta">No takes yet.</div>
@@ -116,7 +123,7 @@ var TICKS = [[15,"problem"],[30,"solution"],[50,"features"]];
 
 var $ = function(id){return document.getElementById(id);};
 var sb = window.supabase.createClient(SB_URL, SB_KEY);
-var uid = null, takesCache = [], projCache = [], localDb = null;
+var uid = null, takesCache = [], projCache = [], voicesCache = [], localDb = null, openSet = {};
 var rec = null, chunks = [], stream = null, t0 = 0, timer = null, burstTimer = null, burstDone = false, pending = null, wake = null;
 
 // helpers
@@ -159,10 +166,11 @@ function signOut(){sb.auth.signOut().then(function(){uid = null; takesCache = []
 function loadAll(){
   return Promise.all([
     sb.from("idea67_projects").select("name,notes").order("name"),
-    sb.from("idea67_takes").select("*").order("created_at")
+    sb.from("idea67_takes").select("*").order("created_at"),
+    sb.from("idea67_voices").select("*").order("created_at")
   ]).then(function(r){
-    if(r[0].error || r[1].error){$("msg").textContent = "Could not load from the database."; return;}
-    projCache = r[0].data || []; takesCache = r[1].data || [];
+    if(r[0].error || r[1].error || r[2].error){$("msg").textContent = "Could not load from the database."; return;}
+    projCache = r[0].data || []; takesCache = r[1].data || []; voicesCache = r[2].data || [];
     renderProjects(); renderLib();
   });
 }
@@ -188,51 +196,29 @@ function renderProjects(){
     row.appendChild(s); row.appendChild(b); pl.appendChild(row);
   });
 }
+function mkDetails(key,label,cls){
+  var d = document.createElement("details"); d.className = cls;
+  if(openSet[key]) d.open = true;
+  var sm = document.createElement("summary"); sm.textContent = label; d.appendChild(sm);
+  d.addEventListener("toggle",function(){if(d.open) openSet[key] = 1; else delete openSet[key];});
+  return d;
+}
+function btn(label,fn){
+  var b = document.createElement("button"); b.className = "small"; b.textContent = label;
+  b.onclick = function(){fn(b);};
+  return b;
+}
 function renderLib(){
   var lib = $("lib");
   if(!takesCache.length){lib.textContent = "No takes yet."; return;}
   lib.innerHTML = "";
   var players = {};
   var names = {}; takesCache.forEach(function(t){names[t.project]=1;});
-  Object.keys(names).sort().forEach(function(p){
+  Object.keys(names).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;}).forEach(function(p){
     var mine = takesCache.filter(function(t){return t.project===p;}).sort(function(a,b){return a.take-b.take;});
-    var h = document.createElement("div");
-    h.style.marginTop = "12px";
-    var st = document.createElement("strong"); st.textContent = p;
-    var sp = document.createElement("span"); sp.className = "meta"; sp.textContent = " "+mine.length+" take"+(mine.length===1?"":"s");
-    h.appendChild(st); h.appendChild(sp); lib.appendChild(h);
-    mine.forEach(function(t){
-      var d = document.createElement("div"); d.className = "take";
-      var m = document.createElement("div"); m.className = "meta";
-      m.textContent = "Take "+t.take+", "+t.style+", "+fmt(t.duration_s)+(t.overtime_s>0?", "+Math.round(t.overtime_s)+"s over":"")+", "+String(t.created_at).slice(0,10);
-      var a = document.createElement("audio"); a.controls = true; a.preload = "none";
-      players[t.audio_path] = a;
-      var b1 = document.createElement("button"); b1.className = "small"; b1.textContent = "Download";
-      b1.onclick = function(){downloadTake(t);};
-      var b2 = document.createElement("button"); b2.className = "small"; b2.textContent = "Delete";
-      b2.onclick = function(){if(confirm("Delete this take?")) deleteTake(t);};
-      d.appendChild(m); d.appendChild(a); d.appendChild(b1); d.appendChild(b2);
-      var bt = document.createElement("button"); bt.className = "small";
-      bt.textContent = t.transcript ? "Transcribe again" : "Transcribe";
-      bt.onclick = function(){transcribeTake(t,bt);};
-      d.appendChild(bt);
-      if(t.transcript){
-        var tx = document.createElement("textarea"); tx.value = t.transcript;
-        tx.onchange = function(){saveText(t,tx.value);};
-        var bc = document.createElement("button"); bc.className = "small"; bc.textContent = "Copy text";
-        bc.onclick = function(){copyText(tx.value,bc);};
-        var bv = document.createElement("button"); bv.className = "small"; bv.textContent = "Read it in a voice";
-        bv.onclick = function(){voiceTake(t,tx.value,bv);};
-        d.appendChild(tx); d.appendChild(bc); d.appendChild(bv);
-      }
-      if(t.tts_path){
-        var vl = document.createElement("div"); vl.className = "vlabel"; vl.textContent = "Voice version"+(t.tts_voice?", "+t.tts_voice:"");
-        var va = document.createElement("audio"); va.controls = true; va.preload = "none";
-        players[t.tts_path] = va;
-        d.appendChild(vl); d.appendChild(va);
-      }
-      lib.appendChild(d);
-    });
+    var sec = mkDetails("p:"+p, p+", "+mine.length+" take"+(mine.length===1?"":"s"), "psec");
+    mine.forEach(function(t){sec.appendChild(takeCard(t,players));});
+    lib.appendChild(sec);
   });
   var paths = Object.keys(players);
   sb.storage.from(BUCKET).createSignedUrls(paths,3600).then(function(r){
@@ -240,13 +226,56 @@ function renderLib(){
     r.data.forEach(function(x){if(x.signedUrl && players[x.path]) players[x.path].src = x.signedUrl;});
   });
 }
+function takeCard(t,players){
+  var d = document.createElement("div"); d.className = "take";
+  var h = document.createElement("div"); h.className = "thead";
+  var st = document.createElement("strong"); st.textContent = "Take "+t.take+" ";
+  var sp = document.createElement("span");
+  sp.textContent = t.style+", "+fmt(t.duration_s)+(t.overtime_s>0?", "+Math.round(t.overtime_s)+"s over":"")+", "+String(t.created_at).slice(0,10);
+  h.appendChild(st); h.appendChild(sp); d.appendChild(h);
+  var a = document.createElement("audio"); a.controls = true; a.preload = "none";
+  players[t.audio_path] = a; d.appendChild(a);
+  d.appendChild(btn(t.transcript ? "Transcribe again" : "Transcribe", function(b){transcribeTake(t,b);}));
+  d.appendChild(btn("Download", function(){downloadTake(t);}));
+  d.appendChild(btn("Delete take", function(){if(confirm("Delete this take and its voice versions?")) deleteTake(t);}));
+  if(!t.transcript) return d;
+
+  var td = mkDetails("x:"+t.id, "Text", "sub");
+  var tx = document.createElement("textarea"); tx.value = t.transcript;
+  tx.onchange = function(){saveText(t,tx.value);};
+  td.appendChild(tx);
+  td.appendChild(btn("Copy text", function(b){copyText(tx.value,b);}));
+  d.appendChild(td);
+
+  var vs = voicesCache.filter(function(v){return v.take_id===t.id;});
+  var vd = mkDetails("v:"+t.id, "Voice versions ("+vs.length+")", "sub");
+  vd.appendChild(btn("Make a voice version", function(b){voiceTake(t,tx.value,b);}));
+  vs.forEach(function(v){
+    var row = document.createElement("div"); row.className = "vrow";
+    var lb = document.createElement("div"); lb.className = "meta";
+    lb.textContent = (v.voice_name || "Voice")+", "+String(v.created_at).slice(0,10);
+    var va = document.createElement("audio"); va.controls = true; va.preload = "none";
+    players[v.audio_path] = va;
+    row.appendChild(lb); row.appendChild(va);
+    row.appendChild(btn("Delete voice", function(){if(confirm("Delete this voice version?")) deleteVoice(v);}));
+    vd.appendChild(row);
+  });
+  d.appendChild(vd);
+  return d;
+}
 function downloadTake(t){
   return sb.storage.from(BUCKET).download(t.audio_path).then(function(r){if(r.data) download(r.data,fileName(t));});
 }
 function deleteTake(t){
-  var gone = [t.audio_path]; if(t.tts_path) gone.push(t.tts_path);
+  var gone = [t.audio_path];
+  voicesCache.forEach(function(v){if(v.take_id===t.id) gone.push(v.audio_path);});
   sb.storage.from(BUCKET).remove(gone).then(function(){
     return sb.from("idea67_takes").delete().eq("id",t.id);
+  }).then(loadAll);
+}
+function deleteVoice(v){
+  sb.storage.from(BUCKET).remove([v.audio_path]).then(function(){
+    return sb.from("idea67_voices").delete().eq("id",v.id);
   }).then(loadAll);
 }
 function exportAll(){
@@ -327,14 +356,20 @@ function copyText(text,btn){
     btn.textContent = "Copied"; setTimeout(function(){btn.textContent = "Copy text";},1500);
   });
 }
-function voiceTake(t,text,btn){
+function voiceTake(t,text,b){
   $("libmsg").textContent = "";
   var v = $("voice").value;
-  if(!v){$("libmsg").textContent = "Pick a voice first."; return;}
+  if(!v){$("libmsg").textContent = "Pick a voice at the top of Takes first."; return;}
   try{localStorage.setItem("idea67-voice",v);}catch(e){}
-  btn.disabled = true; btn.textContent = "Making voice...";
-  var path = uid+"/"+Date.now()+"-"+slug(t.project)+"-take"+t.take+"-voice.mp3";
   var name = voiceName();
+  var same = voicesCache.filter(function(x){return x.take_id===t.id && x.voice_id===v && x.text===text;});
+  if(same.length){
+    $("libmsg").textContent = name+" already read this exact text for take "+t.take+". It is saved under Voice versions, so no credits were spent.";
+    openSet["v:"+t.id] = 1; renderLib();
+    return;
+  }
+  b.disabled = true; b.textContent = "Making "+name+"...";
+  var path = uid+"/"+Date.now()+"-"+slug(t.project)+"-take"+t.take+"-"+slug(name)+".mp3";
   authHeader().then(function(h){
     return fetch("/api/speak",{method:"POST",headers:{Authorization:h,"Content-Type":"application/json"},body:JSON.stringify({text:text,voice_id:v})});
   }).then(function(r){
@@ -344,13 +379,13 @@ function voiceTake(t,text,btn){
     return sb.storage.from(BUCKET).upload(path,mp3,{contentType:"audio/mpeg"});
   }).then(function(r){
     if(r.error) throw r.error;
-    var old = t.tts_path;
-    return sb.from("idea67_takes").update({tts_path:path,tts_voice:name}).eq("id",t.id).then(function(r2){
-      if(r2.error) throw r2.error;
-      if(old) return sb.storage.from(BUCKET).remove([old]);
-    });
-  }).then(loadAll).catch(function(e){
-    btn.disabled = false; btn.textContent = "Read it in a voice";
+    return sb.from("idea67_voices").insert({take_id:t.id,voice_id:v,voice_name:name,text:text,audio_path:path});
+  }).then(function(r){
+    if(r.error) throw r.error;
+    openSet["v:"+t.id] = 1;
+    return loadAll();
+  }).catch(function(e){
+    b.disabled = false; b.textContent = "Make a voice version";
     $("libmsg").textContent = e.message || "Voice failed.";
   });
 }
