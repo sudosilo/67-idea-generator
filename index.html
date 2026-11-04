@@ -33,6 +33,8 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 .msg{color:#b00020;min-height:20px;font-size:14px}
 .proj{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0}
 .proj span{flex:1}
+textarea{width:100%;min-height:110px;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-family:inherit;margin-top:6px}
+.vlabel{font-size:13px;color:var(--mute);margin-top:6px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -69,6 +71,9 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
   </div>
   <div class="card">
     <strong>Takes</strong>
+    <label for="voice">Voice for read backs</label>
+    <select id="voice"><option value="">Loading voices...</option></select>
+    <div id="libmsg" class="msg"></div>
     <div id="lib" class="meta">No takes yet.</div>
     <button class="small" id="expall">Export everything</button>
     <button class="small hidden" id="imp"></button>
@@ -132,7 +137,7 @@ function countFor(p){return takesCache.filter(function(t){return t.project===p;}
 function boot(){
   sb.auth.getSession().then(function(r){
     var s = r.data && r.data.session;
-    if(s && s.user && !s.user.is_anonymous){uid = s.user.id; show("home"); loadAll(); checkLocal();}
+    if(s && s.user && !s.user.is_anonymous){uid = s.user.id; show("home"); loadAll(); checkLocal(); loadVoices();}
     else show("login");
   });
 }
@@ -207,10 +212,29 @@ function renderLib(){
       var b2 = document.createElement("button"); b2.className = "small"; b2.textContent = "Delete";
       b2.onclick = function(){if(confirm("Delete this take?")) deleteTake(t);};
       d.appendChild(m); d.appendChild(a); d.appendChild(b1); d.appendChild(b2);
+      var bt = document.createElement("button"); bt.className = "small";
+      bt.textContent = t.transcript ? "Transcribe again" : "Transcribe";
+      bt.onclick = function(){transcribeTake(t,bt);};
+      d.appendChild(bt);
+      if(t.transcript){
+        var tx = document.createElement("textarea"); tx.value = t.transcript;
+        tx.onchange = function(){saveText(t,tx.value);};
+        var bc = document.createElement("button"); bc.className = "small"; bc.textContent = "Copy text";
+        bc.onclick = function(){copyText(tx.value,bc);};
+        var bv = document.createElement("button"); bv.className = "small"; bv.textContent = "Read it in a voice";
+        bv.onclick = function(){voiceTake(t,tx.value,bv);};
+        d.appendChild(tx); d.appendChild(bc); d.appendChild(bv);
+      }
+      if(t.tts_path){
+        var vl = document.createElement("div"); vl.className = "vlabel"; vl.textContent = "Voice version"+(t.tts_voice?", "+t.tts_voice:"");
+        var va = document.createElement("audio"); va.controls = true; va.preload = "none";
+        players[t.tts_path] = va;
+        d.appendChild(vl); d.appendChild(va);
+      }
       lib.appendChild(d);
     });
   });
-  var paths = takesCache.map(function(t){return t.audio_path;});
+  var paths = Object.keys(players);
   sb.storage.from(BUCKET).createSignedUrls(paths,3600).then(function(r){
     if(!r.data) return;
     r.data.forEach(function(x){if(x.signedUrl && players[x.path]) players[x.path].src = x.signedUrl;});
@@ -220,19 +244,114 @@ function downloadTake(t){
   return sb.storage.from(BUCKET).download(t.audio_path).then(function(r){if(r.data) download(r.data,fileName(t));});
 }
 function deleteTake(t){
-  sb.storage.from(BUCKET).remove([t.audio_path]).then(function(){
+  var gone = [t.audio_path]; if(t.tts_path) gone.push(t.tts_path);
+  sb.storage.from(BUCKET).remove(gone).then(function(){
     return sb.from("idea67_takes").delete().eq("id",t.id);
   }).then(loadAll);
 }
 function exportAll(){
   if(!takesCache.length) return;
   var manifest = {app:"67 Idea Generator",exported:new Date().toISOString(),takes:takesCache.map(function(t){
-    return {file:fileName(t),project:t.project,style:t.style,take:t.take,date:t.created_at,durationSeconds:Math.round(t.duration_s*10)/10,overtimeSeconds:Math.round(t.overtime_s*10)/10};
+    return {file:fileName(t),project:t.project,style:t.style,take:t.take,date:t.created_at,transcript:t.transcript||"",durationSeconds:Math.round(t.duration_s*10)/10,overtimeSeconds:Math.round(t.overtime_s*10)/10};
   })};
   download(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),"67-idea-generator-manifest.json");
   var chain = Promise.resolve();
   takesCache.forEach(function(t){
     chain = chain.then(function(){return downloadTake(t);}).then(function(){return new Promise(function(res){setTimeout(res,500);});});
+  });
+}
+
+// transcripts and voices
+function authHeader(){
+  return sb.auth.getSession().then(function(r){
+    var s = r.data && r.data.session;
+    if(!s) throw new Error("Signed out. Sign in again.");
+    return "Bearer "+s.access_token;
+  });
+}
+function readJson(r){
+  return r.json().catch(function(){return {};}).then(function(j){
+    if(!r.ok) throw new Error(j.error || "Request failed");
+    return j;
+  });
+}
+function loadVoices(){
+  var sel = $("voice");
+  authHeader().then(function(h){
+    return fetch("/api/voices",{headers:{Authorization:h}});
+  }).then(readJson).then(function(j){
+    sel.innerHTML = "";
+    var saved = "";
+    try{saved = localStorage.getItem("idea67-voice") || "";}catch(e){}
+    (j.voices || []).forEach(function(v){
+      var o = document.createElement("option"); o.value = v.id; o.textContent = v.name;
+      if(v.id===saved) o.selected = true;
+      sel.appendChild(o);
+    });
+    if(!sel.options.length) sel.innerHTML = '<option value="">No voices found</option>';
+  }).catch(function(e){
+    sel.innerHTML = '<option value="">Voices unavailable</option>';
+    $("libmsg").textContent = e.message;
+  });
+}
+function voiceName(){
+  var sel = $("voice"), o = sel.options[sel.selectedIndex];
+  return o ? o.textContent : "";
+}
+function transcribeTake(t,btn){
+  $("libmsg").textContent = "";
+  btn.disabled = true; btn.textContent = "Transcribing...";
+  var blob = null;
+  sb.storage.from(BUCKET).download(t.audio_path).then(function(r){
+    if(r.error) throw r.error;
+    blob = r.data;
+    return authHeader();
+  }).then(function(h){
+    return fetch("/api/transcribe",{method:"POST",headers:{Authorization:h,"Content-Type":t.mime},body:blob});
+  }).then(readJson).then(function(j){
+    return sb.from("idea67_takes").update({transcript:j.text,words:j.words}).eq("id",t.id).then(function(r){if(r.error) throw r.error;});
+  }).then(loadAll).catch(function(e){
+    btn.disabled = false; btn.textContent = t.transcript ? "Transcribe again" : "Transcribe";
+    $("libmsg").textContent = e.message || "Transcription failed.";
+  });
+}
+function saveText(t,text){
+  sb.from("idea67_takes").update({transcript:text}).eq("id",t.id).then(function(r){
+    if(r.error){$("libmsg").textContent = "Could not save the edited text."; return;}
+    t.transcript = text;
+  });
+}
+function copyText(text,btn){
+  if(!navigator.clipboard){$("libmsg").textContent = "Copy is not supported here."; return;}
+  navigator.clipboard.writeText(text).then(function(){
+    btn.textContent = "Copied"; setTimeout(function(){btn.textContent = "Copy text";},1500);
+  });
+}
+function voiceTake(t,text,btn){
+  $("libmsg").textContent = "";
+  var v = $("voice").value;
+  if(!v){$("libmsg").textContent = "Pick a voice first."; return;}
+  try{localStorage.setItem("idea67-voice",v);}catch(e){}
+  btn.disabled = true; btn.textContent = "Making voice...";
+  var path = uid+"/"+Date.now()+"-"+slug(t.project)+"-take"+t.take+"-voice.mp3";
+  var name = voiceName();
+  authHeader().then(function(h){
+    return fetch("/api/speak",{method:"POST",headers:{Authorization:h,"Content-Type":"application/json"},body:JSON.stringify({text:text,voice_id:v})});
+  }).then(function(r){
+    if(!r.ok) return readJson(r);
+    return r.blob();
+  }).then(function(mp3){
+    return sb.storage.from(BUCKET).upload(path,mp3,{contentType:"audio/mpeg"});
+  }).then(function(r){
+    if(r.error) throw r.error;
+    var old = t.tts_path;
+    return sb.from("idea67_takes").update({tts_path:path,tts_voice:name}).eq("id",t.id).then(function(r2){
+      if(r2.error) throw r2.error;
+      if(old) return sb.storage.from(BUCKET).remove([old]);
+    });
+  }).then(loadAll).catch(function(e){
+    btn.disabled = false; btn.textContent = "Read it in a voice";
+    $("libmsg").textContent = e.message || "Voice failed.";
   });
 }
 
