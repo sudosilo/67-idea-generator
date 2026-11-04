@@ -8,8 +8,13 @@
 :root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fafaf5;--ink:#1a1a1a;--mute:#6b6b63;--line:#d9d9cf;--card:#ffffff;--accent:#ff2d95}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4}
-main{max-width:560px;margin:0 auto;padding:16px}
-h1{font-size:28px;margin:8px 0 0}
+main{max-width:560px;margin:0 auto;padding:0 16px 24px}
+.top{display:flex;align-items:center;justify-content:space-between;max-width:560px;margin:0 auto;padding:12px 16px}
+.top strong{font-size:20px}
+#menubtn{font-size:22px;padding:6px 14px}
+#menu{position:absolute;right:16px;top:calc(56px + env(safe-area-inset-top,0px));background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:40;min-width:180px;overflow:hidden}
+#menu button{display:block;width:100%;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--line)}
+#menu button:last-child{border-bottom:0}
 .sub{color:var(--mute);margin:0 0 16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
 label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
@@ -17,8 +22,22 @@ input,select{width:100%;font-size:17px;padding:10px;border:1px solid var(--line)
 button{font-size:17px;padding:12px 16px;border-radius:10px;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer}
 button:disabled{opacity:.5}
 button.main{background:var(--ink);color:#fff;width:100%;margin-top:14px;padding:16px}
+button.plain{background:#fff;color:var(--ink)}
 button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
+button.on{background:#fff4c2;border-color:#b58900}
 .hidden{display:none}
+.row{display:flex;gap:8px}
+.row input{flex:1}
+.row button{white-space:nowrap}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{text-align:left;border:1px solid var(--line);border-left:10px solid #999;border-radius:12px;padding:12px;min-height:84px;display:flex;flex-direction:column;justify-content:space-between}
+.tile .tn{font-size:17px;font-weight:600;word-break:break-word}
+.tile .tm{font-size:13px;color:var(--mute)}
+#pbar{height:10px;border-radius:6px;margin-bottom:10px}
+#ptitle{font-size:24px;margin:0}
+.dots{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.dot{width:30px;height:30px;border-radius:50%;padding:0;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.dot.sel{box-shadow:0 0 0 3px var(--ink)}
 #bar{position:fixed;left:0;right:0;top:0;height:10px;background:var(--line);z-index:5}
 #fill{height:100%;width:0;background:var(--accent)}
 .tick{position:absolute;top:0;width:2px;height:22px;background:var(--ink)}
@@ -28,63 +47,95 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 #strobe{position:fixed;inset:0;z-index:50;display:none}
 #stop{position:relative;z-index:60}
 .take{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fdfdf9}
+.take.good{border-color:#b58900;background:#fffbea}
 .take audio,.vrow audio{width:100%;margin-top:6px}
 .thead{font-size:15px}
 .thead span{color:var(--mute);font-size:13px}
-details.psec{border-top:1px solid var(--line)}
-details.psec>summary{cursor:pointer;padding:12px 0;font-size:17px;font-weight:600}
 details.sub{margin-top:8px;border-top:1px dashed var(--line)}
 details.sub>summary{cursor:pointer;padding:8px 0;font-size:15px}
 .vrow{border-top:1px solid var(--line);padding:8px 0}
 .meta{font-size:13px;color:var(--mute)}
 .msg{color:#b00020;min-height:20px;font-size:14px}
-.proj{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0}
-.proj span{flex:1}
+.ok{color:#1d6b2f}
 textarea{width:100%;min-height:110px;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-family:inherit;margin-top:6px}
-.vlabel{font-size:13px;color:var(--mute);margin-top:6px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
 <div id="strobe"></div>
+<header class="top">
+  <strong>67 Idea Generator</strong>
+  <button id="menubtn" class="hidden" aria-label="Menu">&#9776;</button>
+</header>
+<div id="menu" class="hidden">
+  <button id="m-home">Home</button>
+  <button id="m-settings">Settings</button>
+  <button id="m-signout">Sign out</button>
+</div>
 <main>
-<h1>67 Idea Generator</h1>
-<p class="sub">Sixty seconds to tell someone about something you made.</p>
 
 <section id="login" class="hidden">
+  <p class="sub">Sixty seconds to tell someone about something you made.</p>
   <div class="card">
     <label for="email">Email</label>
     <input id="email" type="email" autocomplete="username" placeholder="xxxx">
     <label for="pw">Password</label>
     <input id="pw" type="password" autocomplete="current-password" placeholder="xxxx">
     <button class="main" id="signin">Sign in</button>
+    <button class="main plain" id="signup">Create account</button>
     <div id="loginmsg" class="msg"></div>
   </div>
 </section>
 
 <section id="home" class="hidden">
   <div class="card">
-    <label for="proj">Project name</label>
-    <input id="proj" list="projlist" placeholder="xxxx" autocomplete="off">
-    <datalist id="projlist"></datalist>
+    <label for="newproj">New project</label>
+    <div class="row">
+      <input id="newproj" placeholder="xxxx" autocomplete="off">
+      <button id="mkproj">Create</button>
+    </div>
+    <div id="homemsg" class="msg"></div>
+  </div>
+  <div id="grid" class="grid"></div>
+</section>
+
+<section id="project" class="hidden">
+  <div class="card">
+    <div id="pbar"></div>
+    <h2 id="ptitle"></h2>
+    <div class="meta" id="pcount"></div>
+    <div class="dots" id="pcolors"></div>
     <label for="style">Style</label>
     <select id="style"></select>
     <button class="main" id="rec">Record</button>
     <div id="msg" class="msg"></div>
   </div>
   <div class="card">
-    <strong>Projects</strong>
-    <div id="plist" class="meta">No projects yet.</div>
-  </div>
-  <div class="card">
     <strong>Takes</strong>
     <label for="voice">Voice for new voice versions</label>
     <select id="voice"><option value="">Loading voices...</option></select>
     <div id="libmsg" class="msg"></div>
+    <button class="small" id="expgood">Export good</button>
+    <button class="small" id="expall">Export all</button>
     <div id="lib" class="meta">No takes yet.</div>
-    <button class="small" id="expall">Export everything</button>
-    <button class="small hidden" id="imp"></button>
-    <button class="small" id="signout">Sign out</button>
+  </div>
+</section>
+
+<section id="settings" class="hidden">
+  <div class="card">
+    <strong>Settings</strong>
+    <div class="meta" id="whoami"></div>
+    <label for="elkey">Your ElevenLabs API key</label>
+    <input id="elkey" type="password" autocomplete="off" placeholder="xxxx">
+    <div class="meta">Stays on this device only. Transcripts and voice versions use this key and your ElevenLabs credits.</div>
+    <button class="main" id="savekey">Save key</button>
+    <button class="main plain" id="clearkey">Remove key</button>
+    <div id="keymsg" class="msg"></div>
+  </div>
+  <div class="card hidden" id="impcard">
+    <strong>Takes saved on this phone</strong>
+    <div class="meta">Recorded with the first version of the app, before accounts.</div>
+    <button class="main" id="imp"></button>
   </div>
 </section>
 
@@ -101,7 +152,7 @@ textarea{width:100%;min-height:110px;font-size:15px;padding:8px;border:1px solid
     <div class="meta" id="revmeta"></div>
     <audio id="revaud" controls style="width:100%;margin-top:8px"></audio>
     <button class="main" id="keep">Keep</button>
-    <button class="main" id="drop" style="background:#fff;color:var(--ink)">Discard</button>
+    <button class="main plain" id="drop">Discard</button>
     <div id="revmsg" class="msg"></div>
   </div>
 </section>
@@ -112,18 +163,20 @@ textarea{width:100%;min-height:110px;font-size:15px;padding:8px;border:1px solid
 var SB_URL = "https://vogxdikogfaxhwcgajfg.supabase.co";
 var SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvZ3hkaWtvZ2ZheGh3Y2dhamZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTk4MDAsImV4cCI6MjEwNjk3NTgwMH0.fUosu3JdsUI5GFnQjDbOxfYCWO1hfijQO3O8lJVsU98";
 var BUCKET = "idea67-takes";
+var KEY_STORE = "idea67-elevenlabs-key";
 
 // Tuning numbers
 var LIMIT_SECONDS = 60;
 var BURST_SECONDS = 0.9;
 var STEPS_PER_SECOND = 7;
 var PALETTE = ["#ff2d95","#ffe600","#00e5ff","#ff8c00","#b6ff00","#8a2be2"];
+var COLORS = ["#e63946","#f4a261","#2a9d8f","#457b9d","#8e44ad","#d63384","#6a994e","#bc6c25","#0096c7","#e9c46a","#7b2cbf","#c1121f"];
 var STYLES = ["product spot","radio ad","how it got built","deadpan infomercial"];
 var TICKS = [[15,"problem"],[30,"solution"],[50,"features"]];
 
 var $ = function(id){return document.getElementById(id);};
 var sb = window.supabase.createClient(SB_URL, SB_KEY);
-var uid = null, takesCache = [], projCache = [], voicesCache = [], localDb = null, openSet = {};
+var uid = null, userEmail = "", takesCache = [], projCache = [], voicesCache = [], localDb = null, openSet = {}, view = "login", curProj = null, voicesLoaded = false;
 var rec = null, chunks = [], stream = null, t0 = 0, timer = null, burstTimer = null, burstDone = false, pending = null, wake = null;
 
 // helpers
@@ -131,7 +184,13 @@ function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|
 function fmt(s){s=Math.floor(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
 function extFor(m){return m.indexOf("mp4")>-1?"m4a":m.indexOf("ogg")>-1?"ogg":"webm";}
 function fileName(t){return "67-"+slug(t.project)+"-"+slug(t.style)+"-take"+t.take+"."+extFor(t.mime);}
-function show(id){["login","home","live","review"].forEach(function(x){$(x).classList.toggle("hidden",x!==id);});}
+function byName(a,b){return a.name.toLowerCase()<b.name.toLowerCase()?-1:1;}
+function show(id){
+  view = id;
+  ["login","home","project","settings","live","review"].forEach(function(x){$(x).classList.toggle("hidden",x!==id);});
+  $("menubtn").classList.toggle("hidden", !uid || id==="live" || id==="review");
+  $("menu").classList.add("hidden");
+}
 function download(blob,name){
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name;
@@ -139,95 +198,173 @@ function download(blob,name){
   setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
 }
 function countFor(p){return takesCache.filter(function(t){return t.project===p;}).length;}
-
-// sign in
-function boot(){
-  sb.auth.getSession().then(function(r){
-    var s = r.data && r.data.session;
-    if(s && s.user && !s.user.is_anonymous){uid = s.user.id; show("home"); loadAll(); checkLocal(); loadVoices();}
-    else show("login");
-  });
+function getKey(){try{return localStorage.getItem(KEY_STORE) || "";}catch(e){return "";}}
+function btn(label,fn,cls){
+  var b = document.createElement("button"); b.className = "small"+(cls?" "+cls:""); b.textContent = label;
+  b.onclick = function(){fn(b);};
+  return b;
 }
-function signIn(){
-  var e = $("email").value.trim(), p = $("pw").value;
-  $("loginmsg").textContent = "";
-  if(!e || !p){$("loginmsg").textContent = "Enter email and password."; return;}
-  $("signin").disabled = true;
-  sb.auth.signInWithPassword({email:e,password:p}).then(function(r){
-    $("signin").disabled = false;
-    if(r.error){$("loginmsg").textContent = r.error.message; return;}
-    $("pw").value = "";
-    boot();
-  });
-}
-function signOut(){sb.auth.signOut().then(function(){uid = null; takesCache = []; projCache = []; show("login");});}
-
-// load and draw
-function loadAll(){
-  return Promise.all([
-    sb.from("idea67_projects").select("name,notes").order("name"),
-    sb.from("idea67_takes").select("*").order("created_at"),
-    sb.from("idea67_voices").select("*").order("created_at")
-  ]).then(function(r){
-    if(r[0].error || r[1].error || r[2].error){$("msg").textContent = "Could not load from the database."; return;}
-    projCache = r[0].data || []; takesCache = r[1].data || []; voicesCache = r[2].data || [];
-    renderProjects(); renderLib();
-  });
-}
-function allNames(){
-  var names = {};
-  projCache.forEach(function(p){names[p.name]=1;});
-  takesCache.forEach(function(t){names[t.project]=1;});
-  return Object.keys(names).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
-}
-function renderProjects(){
-  var names = allNames();
-  $("projlist").innerHTML = "";
-  names.forEach(function(n){var o = document.createElement("option"); o.value = n; $("projlist").appendChild(o);});
-  var pl = $("plist");
-  if(!names.length){pl.textContent = "No projects yet."; return;}
-  pl.innerHTML = "";
-  names.forEach(function(n){
-    var row = document.createElement("div"); row.className = "proj";
-    var s = document.createElement("span"); var c = countFor(n);
-    s.textContent = n+" ("+(c?c+" take"+(c===1?"":"s"):"no takes")+")";
-    var b = document.createElement("button"); b.className = "small"; b.textContent = "Pick";
-    b.onclick = function(){$("proj").value = n; window.scrollTo(0,0);};
-    row.appendChild(s); row.appendChild(b); pl.appendChild(row);
-  });
-}
-function mkDetails(key,label,cls){
-  var d = document.createElement("details"); d.className = cls;
+function mkDetails(key,label){
+  var d = document.createElement("details"); d.className = "sub";
   if(openSet[key]) d.open = true;
   var sm = document.createElement("summary"); sm.textContent = label; d.appendChild(sm);
   d.addEventListener("toggle",function(){if(d.open) openSet[key] = 1; else delete openSet[key];});
   return d;
 }
-function btn(label,fn){
-  var b = document.createElement("button"); b.className = "small"; b.textContent = label;
-  b.onclick = function(){fn(b);};
-  return b;
+
+// screens
+function route(){
+  if(!uid){show("login"); return;}
+  if(view==="live" || view==="review") return;
+  var h = location.hash.slice(1);
+  if(h==="settings"){renderSettings(); show("settings"); return;}
+  var m = /^project-(\d+)$/.exec(h);
+  if(m){
+    var p = projCache.filter(function(x){return String(x.id)===m[1];})[0];
+    if(p){
+      var changed = !curProj || curProj.id!==p.id || view!=="project";
+      curProj = p; renderProject(); show("project");
+      if(changed) window.scrollTo(0,0);
+      return;
+    }
+  }
+  curProj = null; renderHome();
+  if(view!=="home"){show("home"); window.scrollTo(0,0);}
 }
-function renderLib(){
+function go(hash){
+  if(location.hash==="#"+hash || (hash==="" && !location.hash)) route();
+  else location.hash = hash;
+}
+
+// accounts
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s = r.data && r.data.session;
+    if(s && s.user && !s.user.is_anonymous){
+      uid = s.user.id; userEmail = s.user.email || "";
+      loadAll().then(route); checkLocal();
+    } else {uid = null; show("login");}
+  });
+}
+function creds(){
+  var e = $("email").value.trim(), p = $("pw").value;
+  $("loginmsg").textContent = ""; $("loginmsg").className = "msg";
+  if(!e || !p){$("loginmsg").textContent = "Enter email and password."; return null;}
+  return {email:e,password:p};
+}
+function signIn(){
+  var c = creds(); if(!c) return;
+  $("signin").disabled = true;
+  sb.auth.signInWithPassword(c).then(function(r){
+    $("signin").disabled = false;
+    if(r.error){$("loginmsg").textContent = r.error.message; return;}
+    $("pw").value = ""; boot();
+  });
+}
+function signUp(){
+  var c = creds(); if(!c) return;
+  if(c.password.length < 6){$("loginmsg").textContent = "Use a password of at least 6 characters."; return;}
+  $("signup").disabled = true;
+  sb.auth.signUp({email:c.email,password:c.password,options:{emailRedirectTo:location.origin}}).then(function(r){
+    $("signup").disabled = false;
+    if(r.error){$("loginmsg").textContent = r.error.message; return;}
+    $("pw").value = "";
+    if(r.data && r.data.session){boot(); return;}
+    $("loginmsg").className = "msg ok";
+    $("loginmsg").textContent = "Account created. Open the confirmation email, tap the link, then come back here and sign in.";
+  });
+}
+function signOut(){
+  sb.auth.signOut().then(function(){
+    uid = null; takesCache = []; projCache = []; voicesCache = []; voicesLoaded = false;
+    history.replaceState(null,"",location.pathname); show("login");
+  });
+}
+
+// data
+function loadAll(){
+  return Promise.all([
+    sb.from("idea67_projects").select("id,name,color,created_at").order("created_at"),
+    sb.from("idea67_takes").select("*").order("created_at"),
+    sb.from("idea67_voices").select("*").order("created_at")
+  ]).then(function(r){
+    if(r[0].error || r[1].error || r[2].error){$("homemsg").textContent = "Could not load from the database."; return;}
+    projCache = r[0].data || []; takesCache = r[1].data || []; voicesCache = r[2].data || [];
+  });
+}
+function refresh(){return loadAll().then(route);}
+
+// home
+function renderHome(){
+  var g = $("grid"); g.innerHTML = "";
+  var list = projCache.slice().sort(byName);
+  if(!list.length){g.innerHTML = '<div class="meta">No projects yet. Make one above.</div>'; return;}
+  list.forEach(function(p){
+    var c = countFor(p.name);
+    var good = takesCache.filter(function(t){return t.project===p.name && t.good;}).length;
+    var b = document.createElement("button"); b.className = "tile";
+    var col = p.color || "#999999";
+    b.style.borderLeftColor = col; b.style.background = col+"1a";
+    var n = document.createElement("div"); n.className = "tn"; n.textContent = p.name;
+    var m = document.createElement("div"); m.className = "tm";
+    m.textContent = (c ? c+" take"+(c===1?"":"s") : "no takes")+(good ? ", "+good+" good" : "");
+    b.appendChild(n); b.appendChild(m);
+    b.onclick = function(){go("project-"+p.id);};
+    g.appendChild(b);
+  });
+}
+function createProject(){
+  var n = $("newproj").value.trim();
+  $("homemsg").textContent = "";
+  if(!n){$("homemsg").textContent = "Type a project name first."; return;}
+  var ex = projCache.filter(function(p){return p.name.toLowerCase()===n.toLowerCase();})[0];
+  if(ex){$("newproj").value = ""; go("project-"+ex.id); return;}
+  var color = COLORS[projCache.length % COLORS.length];
+  $("mkproj").disabled = true;
+  sb.from("idea67_projects").insert({name:n,color:color}).select().single().then(function(r){
+    $("mkproj").disabled = false;
+    if(r.error){$("homemsg").textContent = "Could not create the project."; return;}
+    projCache.push(r.data); $("newproj").value = "";
+    go("project-"+r.data.id);
+  });
+}
+
+// project
+function renderProject(){
+  var p = curProj, col = p.color || "#999999";
+  $("pbar").style.background = col;
+  $("ptitle").textContent = p.name;
+  var mine = takesCache.filter(function(t){return t.project===p.name;}).sort(function(a,b){return a.take-b.take;});
+  var good = mine.filter(function(t){return t.good;});
+  $("pcount").textContent = mine.length+" take"+(mine.length===1?"":"s")+", "+good.length+" good";
+  $("expgood").textContent = "Export good ("+good.length+")"; $("expgood").disabled = !good.length;
+  $("expall").textContent = "Export all ("+mine.length+")"; $("expall").disabled = !mine.length;
+  var dots = $("pcolors"); dots.innerHTML = "";
+  COLORS.forEach(function(c){
+    var d = document.createElement("button"); d.className = "dot"+(c===col?" sel":""); d.style.background = c;
+    d.setAttribute("aria-label","Color "+c);
+    d.onclick = function(){setColor(p,c);};
+    dots.appendChild(d);
+  });
+  if(!voicesLoaded) loadVoices();
   var lib = $("lib");
-  if(!takesCache.length){lib.textContent = "No takes yet."; return;}
+  if(!mine.length){lib.textContent = "No takes yet. Hit Record."; return;}
   lib.innerHTML = "";
   var players = {};
-  var names = {}; takesCache.forEach(function(t){names[t.project]=1;});
-  Object.keys(names).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;}).forEach(function(p){
-    var mine = takesCache.filter(function(t){return t.project===p;}).sort(function(a,b){return a.take-b.take;});
-    var sec = mkDetails("p:"+p, p+", "+mine.length+" take"+(mine.length===1?"":"s"), "psec");
-    mine.forEach(function(t){sec.appendChild(takeCard(t,players));});
-    lib.appendChild(sec);
-  });
-  var paths = Object.keys(players);
-  sb.storage.from(BUCKET).createSignedUrls(paths,3600).then(function(r){
+  mine.forEach(function(t){lib.appendChild(takeCard(t,players));});
+  sb.storage.from(BUCKET).createSignedUrls(Object.keys(players),3600).then(function(r){
     if(!r.data) return;
     r.data.forEach(function(x){if(x.signedUrl && players[x.path]) players[x.path].src = x.signedUrl;});
   });
 }
+function setColor(p,c){
+  sb.from("idea67_projects").update({color:c}).eq("id",p.id).then(function(r){
+    if(r.error){$("msg").textContent = "Could not change the color."; return;}
+    p.color = c; route();
+  });
+}
 function takeCard(t,players){
-  var d = document.createElement("div"); d.className = "take";
+  var d = document.createElement("div"); d.className = "take"+(t.good?" good":"");
   var h = document.createElement("div"); h.className = "thead";
   var st = document.createElement("strong"); st.textContent = "Take "+t.take+" ";
   var sp = document.createElement("span");
@@ -235,12 +372,13 @@ function takeCard(t,players){
   h.appendChild(st); h.appendChild(sp); d.appendChild(h);
   var a = document.createElement("audio"); a.controls = true; a.preload = "none";
   players[t.audio_path] = a; d.appendChild(a);
+  d.appendChild(btn(t.good ? "\u2605 Good" : "\u2606 Mark good", function(){toggleGood(t);}, t.good ? "on" : ""));
+  d.appendChild(btn("Export", function(){exportTakes([t]);}));
   d.appendChild(btn(t.transcript ? "Transcribe again" : "Transcribe", function(b){transcribeTake(t,b);}));
-  d.appendChild(btn("Download", function(){downloadTake(t);}));
-  d.appendChild(btn("Delete take", function(){if(confirm("Delete this take and its voice versions?")) deleteTake(t);}));
+  d.appendChild(btn("Delete", function(){if(confirm("Delete take "+t.take+" and its voice versions?")) deleteTake(t);}));
   if(!t.transcript) return d;
 
-  var td = mkDetails("x:"+t.id, "Text", "sub");
+  var td = mkDetails("x:"+t.id, "Text");
   var tx = document.createElement("textarea"); tx.value = t.transcript;
   tx.onchange = function(){saveText(t,tx.value);};
   td.appendChild(tx);
@@ -248,7 +386,7 @@ function takeCard(t,players){
   d.appendChild(td);
 
   var vs = voicesCache.filter(function(v){return v.take_id===t.id;});
-  var vd = mkDetails("v:"+t.id, "Voice versions ("+vs.length+")", "sub");
+  var vd = mkDetails("v:"+t.id, "Voice versions ("+vs.length+")");
   vd.appendChild(btn("Make a voice version", function(b){voiceTake(t,tx.value,b);}));
   vs.forEach(function(v){
     var row = document.createElement("div"); row.className = "vrow";
@@ -257,45 +395,71 @@ function takeCard(t,players){
     var va = document.createElement("audio"); va.controls = true; va.preload = "none";
     players[v.audio_path] = va;
     row.appendChild(lb); row.appendChild(va);
+    row.appendChild(btn("Export", function(){exportVoice(t,v);}));
     row.appendChild(btn("Delete voice", function(){if(confirm("Delete this voice version?")) deleteVoice(v);}));
     vd.appendChild(row);
   });
   d.appendChild(vd);
   return d;
 }
-function downloadTake(t){
-  return sb.storage.from(BUCKET).download(t.audio_path).then(function(r){if(r.data) download(r.data,fileName(t));});
+function toggleGood(t){
+  sb.from("idea67_takes").update({good:!t.good}).eq("id",t.id).then(function(r){
+    if(r.error){$("libmsg").textContent = "Could not save that."; return;}
+    t.good = !t.good; route();
+  });
 }
 function deleteTake(t){
   var gone = [t.audio_path];
   voicesCache.forEach(function(v){if(v.take_id===t.id) gone.push(v.audio_path);});
   sb.storage.from(BUCKET).remove(gone).then(function(){
     return sb.from("idea67_takes").delete().eq("id",t.id);
-  }).then(loadAll);
+  }).then(refresh);
 }
 function deleteVoice(v){
   sb.storage.from(BUCKET).remove([v.audio_path]).then(function(){
     return sb.from("idea67_voices").delete().eq("id",v.id);
-  }).then(loadAll);
+  }).then(refresh);
 }
-function exportAll(){
-  if(!takesCache.length) return;
-  var manifest = {app:"67 Idea Generator",exported:new Date().toISOString(),takes:takesCache.map(function(t){
-    return {file:fileName(t),project:t.project,style:t.style,take:t.take,date:t.created_at,transcript:t.transcript||"",durationSeconds:Math.round(t.duration_s*10)/10,overtimeSeconds:Math.round(t.overtime_s*10)/10};
-  })};
-  download(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),"67-idea-generator-manifest.json");
+
+// export
+function pull(path){
+  return sb.storage.from(BUCKET).download(path).then(function(r){if(r.error) throw r.error; return r.data;});
+}
+function exportTakes(list){
+  $("libmsg").textContent = "";
+  if(!list.length) return;
   var chain = Promise.resolve();
-  takesCache.forEach(function(t){
-    chain = chain.then(function(){return downloadTake(t);}).then(function(){return new Promise(function(res){setTimeout(res,500);});});
+  if(list.length > 1){
+    var manifest = {app:"67 Idea Generator",project:list[0].project,exported:new Date().toISOString(),takes:list.map(function(t){
+      return {file:fileName(t),take:t.take,style:t.style,good:!!t.good,date:t.created_at,transcript:t.transcript||"",durationSeconds:Math.round(t.duration_s*10)/10,overtimeSeconds:Math.round(t.overtime_s*10)/10};
+    })};
+    download(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),"67-"+slug(list[0].project)+"-manifest.json");
+  }
+  list.forEach(function(t,i){
+    chain = chain.then(function(){
+      return pull(t.audio_path).then(function(b){download(b,fileName(t));});
+    }).then(function(){return new Promise(function(res){setTimeout(res, i<list.length-1 ? 600 : 0);});});
   });
+  chain.catch(function(){$("libmsg").textContent = "An export stopped partway. Try again.";});
+}
+function exportVoice(t,v){
+  pull(v.audio_path).then(function(b){
+    download(b,"67-"+slug(t.project)+"-take"+t.take+"-"+slug(v.voice_name||"voice")+".mp3");
+  }).catch(function(){$("libmsg").textContent = "Export failed.";});
+}
+function projectTakes(goodOnly){
+  return takesCache.filter(function(t){return curProj && t.project===curProj.name && (!goodOnly || t.good);}).sort(function(a,b){return a.take-b.take;});
 }
 
 // transcripts and voices
-function authHeader(){
+function apiHeaders(extra){
   return sb.auth.getSession().then(function(r){
     var s = r.data && r.data.session;
     if(!s) throw new Error("Signed out. Sign in again.");
-    return "Bearer "+s.access_token;
+    var h = {Authorization:"Bearer "+s.access_token};
+    var k = getKey(); if(k) h["x-elevenlabs-key"] = k;
+    for(var x in (extra||{})) h[x] = extra[x];
+    return h;
   });
 }
 function readJson(r){
@@ -306,8 +470,10 @@ function readJson(r){
 }
 function loadVoices(){
   var sel = $("voice");
-  authHeader().then(function(h){
-    return fetch("/api/voices",{headers:{Authorization:h}});
+  voicesLoaded = true;
+  sel.innerHTML = '<option value="">Loading voices...</option>';
+  apiHeaders().then(function(h){
+    return fetch("/api/voices",{headers:h});
   }).then(readJson).then(function(j){
     sel.innerHTML = "";
     var saved = "";
@@ -319,6 +485,7 @@ function loadVoices(){
     });
     if(!sel.options.length) sel.innerHTML = '<option value="">No voices found</option>';
   }).catch(function(e){
+    voicesLoaded = false;
     sel.innerHTML = '<option value="">Voices unavailable</option>';
     $("libmsg").textContent = e.message;
   });
@@ -327,20 +494,19 @@ function voiceName(){
   var sel = $("voice"), o = sel.options[sel.selectedIndex];
   return o ? o.textContent : "";
 }
-function transcribeTake(t,btn){
+function transcribeTake(t,b){
   $("libmsg").textContent = "";
-  btn.disabled = true; btn.textContent = "Transcribing...";
+  b.disabled = true; b.textContent = "Transcribing...";
   var blob = null;
-  sb.storage.from(BUCKET).download(t.audio_path).then(function(r){
-    if(r.error) throw r.error;
-    blob = r.data;
-    return authHeader();
+  pull(t.audio_path).then(function(data){
+    blob = data;
+    return apiHeaders({"Content-Type":t.mime});
   }).then(function(h){
-    return fetch("/api/transcribe",{method:"POST",headers:{Authorization:h,"Content-Type":t.mime},body:blob});
+    return fetch("/api/transcribe",{method:"POST",headers:h,body:blob});
   }).then(readJson).then(function(j){
     return sb.from("idea67_takes").update({transcript:j.text,words:j.words}).eq("id",t.id).then(function(r){if(r.error) throw r.error;});
-  }).then(loadAll).catch(function(e){
-    btn.disabled = false; btn.textContent = t.transcript ? "Transcribe again" : "Transcribe";
+  }).then(function(){openSet["x:"+t.id] = 1; return refresh();}).catch(function(e){
+    b.disabled = false; b.textContent = t.transcript ? "Transcribe again" : "Transcribe";
     $("libmsg").textContent = e.message || "Transcription failed.";
   });
 }
@@ -350,10 +516,10 @@ function saveText(t,text){
     t.transcript = text;
   });
 }
-function copyText(text,btn){
+function copyText(text,b){
   if(!navigator.clipboard){$("libmsg").textContent = "Copy is not supported here."; return;}
   navigator.clipboard.writeText(text).then(function(){
-    btn.textContent = "Copied"; setTimeout(function(){btn.textContent = "Copy text";},1500);
+    b.textContent = "Copied"; setTimeout(function(){b.textContent = "Copy text";},1500);
   });
 }
 function voiceTake(t,text,b){
@@ -365,13 +531,13 @@ function voiceTake(t,text,b){
   var same = voicesCache.filter(function(x){return x.take_id===t.id && x.voice_id===v && x.text===text;});
   if(same.length){
     $("libmsg").textContent = name+" already read this exact text for take "+t.take+". It is saved under Voice versions, so no credits were spent.";
-    openSet["v:"+t.id] = 1; renderLib();
+    openSet["v:"+t.id] = 1; route();
     return;
   }
   b.disabled = true; b.textContent = "Making "+name+"...";
   var path = uid+"/"+Date.now()+"-"+slug(t.project)+"-take"+t.take+"-"+slug(name)+".mp3";
-  authHeader().then(function(h){
-    return fetch("/api/speak",{method:"POST",headers:{Authorization:h,"Content-Type":"application/json"},body:JSON.stringify({text:text,voice_id:v})});
+  apiHeaders({"Content-Type":"application/json"}).then(function(h){
+    return fetch("/api/speak",{method:"POST",headers:h,body:JSON.stringify({text:text,voice_id:v})});
   }).then(function(r){
     if(!r.ok) return readJson(r);
     return r.blob();
@@ -383,17 +549,39 @@ function voiceTake(t,text,b){
   }).then(function(r){
     if(r.error) throw r.error;
     openSet["v:"+t.id] = 1;
-    return loadAll();
+    return refresh();
   }).catch(function(e){
     b.disabled = false; b.textContent = "Make a voice version";
     $("libmsg").textContent = e.message || "Voice failed.";
   });
 }
 
-// saving
+// settings
+function renderSettings(){
+  $("whoami").textContent = "Signed in as "+userEmail;
+  $("elkey").value = "";
+  $("keymsg").className = "msg ok";
+  $("keymsg").textContent = getKey() ? "A key is saved on this device." : "No key saved on this device.";
+}
+function saveKey(){
+  var k = $("elkey").value.trim();
+  if(!k){$("keymsg").className = "msg"; $("keymsg").textContent = "Paste a key first."; return;}
+  try{localStorage.setItem(KEY_STORE,k);}catch(e){$("keymsg").className = "msg"; $("keymsg").textContent = "This browser would not save it."; return;}
+  voicesLoaded = false;
+  $("elkey").value = "";
+  $("keymsg").className = "msg ok"; $("keymsg").textContent = "Key saved on this device.";
+}
+function clearKey(){
+  try{localStorage.removeItem(KEY_STORE);}catch(e){}
+  voicesLoaded = false;
+  $("keymsg").className = "msg ok"; $("keymsg").textContent = "Key removed from this device.";
+}
+
+// saving takes
 function saveTake(p){
   var path = uid+"/"+Date.now()+"-"+fileName(p);
-  return sb.from("idea67_projects").upsert({name:p.project},{onConflict:"user_id,name",ignoreDuplicates:true}).then(function(r){
+  var color = COLORS[projCache.length % COLORS.length];
+  return sb.from("idea67_projects").upsert({name:p.project,color:color},{onConflict:"user_id,name",ignoreDuplicates:true}).then(function(r){
     if(r.error) throw r.error;
     return sb.storage.from(BUCKET).upload(path,p.blob,{contentType:p.mime});
   }).then(function(r){
@@ -409,13 +597,14 @@ function keep(){
   p.take = countFor(p.project)+1;
   saveTake(p).then(function(){
     pending = null; $("keep").disabled = false; $("revmsg").textContent = ""; $("revaud").removeAttribute("src");
-    show("home"); loadAll();
+    view = "project"; refresh();
   }).catch(function(){
     $("keep").disabled = false; $("revmsg").textContent = "Saving failed. Tap Keep to try again.";
   });
 }
 function drop(){
-  pending = null; $("revaud").removeAttribute("src"); $("revmsg").textContent = ""; show("home");
+  pending = null; $("revaud").removeAttribute("src"); $("revmsg").textContent = "";
+  view = "project"; route();
 }
 
 // takes saved on this phone by the first version
@@ -447,8 +636,8 @@ function checkLocal(){
     localDb = d;
     localTakes().then(function(list){
       if(!list.length) return;
-      $("imp").textContent = "Upload "+list.length+" take"+(list.length===1?"":"s")+" saved on this phone";
-      $("imp").classList.remove("hidden");
+      $("imp").textContent = "Upload "+list.length+" take"+(list.length===1?"":"s")+" to my account";
+      $("impcard").classList.remove("hidden");
     });
   });
 }
@@ -467,9 +656,10 @@ function importLocal(){
     });
     return chain;
   }).then(function(){
-    $("imp").classList.add("hidden"); $("imp").disabled = false; loadAll();
+    $("impcard").classList.add("hidden"); $("imp").disabled = false;
+    loadAll();
   }).catch(function(){
-    $("imp").disabled = false; $("msg").textContent = "Upload stopped. Tap the button to try again.";
+    $("imp").disabled = false; $("keymsg").textContent = "Upload stopped. Tap the button to try again.";
   });
 }
 
@@ -489,9 +679,9 @@ function pickMime(){
   return "";
 }
 function startRec(){
-  var name = $("proj").value.trim();
+  if(!curProj) return;
+  var name = curProj.name;
   $("msg").textContent = "";
-  if(!name){$("msg").textContent = "Type or pick a project name first."; return;}
   if(!navigator.mediaDevices || !window.MediaRecorder){$("msg").textContent = "Recording is not supported here."; return;}
   navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
     stream = s; chunks = []; burstDone = false;
@@ -504,7 +694,7 @@ function startRec(){
     if(navigator.wakeLock) navigator.wakeLock.request("screen").then(function(w){wake = w;}).catch(function(){});
     buildBar();
     $("fill").style.width = "0%"; $("clock").textContent = "0:00"; $("over").textContent = "";
-    show("live");
+    show("live"); window.scrollTo(0,0);
     timer = setInterval(tick,100);
   }).catch(function(){
     $("msg").textContent = "Microphone access was blocked. Allow it for this page and try again.";
@@ -556,13 +746,25 @@ function finish(name){
 // start up
 STYLES.forEach(function(s){var o = document.createElement("option"); o.value = s; o.textContent = s; $("style").appendChild(o);});
 $("signin").onclick = signIn;
-$("signout").onclick = signOut;
+$("signup").onclick = signUp;
+$("menubtn").onclick = function(e){e.stopPropagation(); $("menu").classList.toggle("hidden");};
+document.addEventListener("click",function(e){if(!$("menu").contains(e.target)) $("menu").classList.add("hidden");});
+$("m-home").onclick = function(){go("");};
+$("m-settings").onclick = function(){go("settings");};
+$("m-signout").onclick = signOut;
+$("mkproj").onclick = createProject;
+$("newproj").onkeydown = function(e){if(e.key==="Enter") createProject();};
 $("rec").onclick = startRec;
 $("stop").onclick = stopRec;
 $("keep").onclick = keep;
 $("drop").onclick = drop;
-$("expall").onclick = exportAll;
+$("expgood").onclick = function(){exportTakes(projectTakes(true));};
+$("expall").onclick = function(){exportTakes(projectTakes(false));};
+$("savekey").onclick = saveKey;
+$("clearkey").onclick = clearKey;
 $("imp").onclick = importLocal;
+window.addEventListener("hashchange",route);
+sb.auth.onAuthStateChange(function(ev){if(ev==="SIGNED_OUT" && uid){uid = null; show("login");}});
 boot();
 </script>
 </body>

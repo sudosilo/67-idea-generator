@@ -1,12 +1,11 @@
 // Has an ElevenLabs voice read a transcript and returns the mp3
-const checkUser = require("./_auth");
+const access = require("./_auth");
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const user = await checkUser(req);
-  if (!user) { res.status(401).json({ error: "This account is not allowed" }); return; }
-  const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) { res.status(500).json({ error: "ELEVENLABS_API_KEY is not set" }); return; }
+  const a = await access(req);
+  if (!a.key) { res.status(a.status).json({ error: a.error }); return; }
+  const key = a.key;
   let body = req.body || {};
   if (typeof body === "string") { try { body = JSON.parse(body); } catch (e) { body = {}; } }
   const text = String(body.text || "").slice(0, 5000);
@@ -20,7 +19,7 @@ module.exports = async (req, res) => {
   });
   if (!r.ok) {
     const t = await r.text();
-    res.status(r.status).json({ error: t.slice(0, 300) || "Voice failed" });
+    res.status(r.status).json({ error: r.status === 401 ? "ElevenLabs refused the key. Check it in Settings." : (t.slice(0, 300) || "Voice failed") });
     return;
   }
   const buf = Buffer.from(await r.arrayBuffer());
