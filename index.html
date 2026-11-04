@@ -15,6 +15,7 @@ h1{font-size:28px;margin:8px 0 0}
 label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
 input,select{width:100%;font-size:17px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
 button{font-size:17px;padding:12px 16px;border-radius:10px;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer}
+button:disabled{opacity:.5}
 button.main{background:var(--ink);color:#fff;width:100%;margin-top:14px;padding:16px}
 button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 .hidden{display:none}
@@ -25,11 +26,15 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 #clock{font-size:72px;text-align:center;margin:90px 0 0;font-variant-numeric:tabular-nums}
 #over{text-align:center;font-size:28px;color:#d4006a;min-height:36px;font-variant-numeric:tabular-nums}
 #strobe{position:fixed;inset:0;z-index:50;display:none}
+#stop{position:relative;z-index:60}
 .take{border-top:1px solid var(--line);padding:10px 0}
 .take audio{width:100%;margin-top:6px}
 .meta{font-size:13px;color:var(--mute)}
-#msg{color:#b00020;min-height:20px;font-size:14px}
+.msg{color:#b00020;min-height:20px;font-size:14px}
+.proj{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0}
+.proj span{flex:1}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
 <div id="strobe"></div>
@@ -37,20 +42,37 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
 <h1>67 Idea Generator</h1>
 <p class="sub">Sixty seconds to tell someone about something you made.</p>
 
-<section id="home">
+<section id="login" class="hidden">
+  <div class="card">
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="xxxx">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="xxxx">
+    <button class="main" id="signin">Sign in</button>
+    <div id="loginmsg" class="msg"></div>
+  </div>
+</section>
+
+<section id="home" class="hidden">
   <div class="card">
     <label for="proj">Project name</label>
-    <input id="proj" list="projlist" placeholder="what did you make" autocomplete="off">
+    <input id="proj" list="projlist" placeholder="xxxx" autocomplete="off">
     <datalist id="projlist"></datalist>
     <label for="style">Style</label>
     <select id="style"></select>
     <button class="main" id="rec">Record</button>
-    <div id="msg"></div>
+    <div id="msg" class="msg"></div>
+  </div>
+  <div class="card">
+    <strong>Projects</strong>
+    <div id="plist" class="meta">No projects yet.</div>
   </div>
   <div class="card">
     <strong>Takes</strong>
     <div id="lib" class="meta">No takes yet.</div>
     <button class="small" id="expall">Export everything</button>
+    <button class="small hidden" id="imp"></button>
+    <button class="small" id="signout">Sign out</button>
   </div>
 </section>
 
@@ -68,110 +90,232 @@ button.small{font-size:14px;padding:6px 10px;margin:4px 6px 0 0}
     <audio id="revaud" controls style="width:100%;margin-top:8px"></audio>
     <button class="main" id="keep">Keep</button>
     <button class="main" id="drop" style="background:#fff;color:var(--ink)">Discard</button>
+    <div id="revmsg" class="msg"></div>
   </div>
 </section>
 </main>
 
 <script>
-// GREEN PHONE EDIT
+// Database connection
+var SB_URL = "https://vogxdikogfaxhwcgajfg.supabase.co";
+var SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvZ3hkaWtvZ2ZheGh3Y2dhamZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTk4MDAsImV4cCI6MjEwNjk3NTgwMH0.fUosu3JdsUI5GFnQjDbOxfYCWO1hfijQO3O8lJVsU98";
+var BUCKET = "idea67-takes";
+
 // Tuning numbers
 var LIMIT_SECONDS = 60;
-var BURST_SECONDS = 3;
-var STEPS_PER_SECOND = 3;
+var BURST_SECONDS = 0.9;
+var STEPS_PER_SECOND = 7;
 var PALETTE = ["#ff2d95","#ffe600","#00e5ff","#ff8c00","#b6ff00","#8a2be2"];
 var STYLES = ["product spot","radio ad","how it got built","deadpan infomercial"];
 var TICKS = [[15,"problem"],[30,"solution"],[50,"features"]];
 
 var $ = function(id){return document.getElementById(id);};
-var db = null, mem = [], memId = 1;
-var rec = null, chunks = [], stream = null, t0 = 0, timer = null, burstTimer = null, burstDone = false, pending = null;
-
-// storage
-function openDB(){
-  return new Promise(function(res,rej){
-    var r = indexedDB.open("idea67",1);
-    r.onupgradeneeded = function(){r.result.createObjectStore("takes",{keyPath:"id",autoIncrement:true});};
-    r.onsuccess = function(){res(r.result);};
-    r.onerror = function(){rej(r.error);};
-  });
-}
-function allTakes(){
-  if(!db) return Promise.resolve(mem.slice());
-  return new Promise(function(res,rej){
-    var q = db.transaction("takes").objectStore("takes").getAll();
-    q.onsuccess = function(){res(q.result);};
-    q.onerror = function(){rej(q.error);};
-  });
-}
-function addTake(t){
-  if(!db){t.id = memId++; mem.push(t); return Promise.resolve();}
-  return new Promise(function(res,rej){
-    var q = db.transaction("takes","readwrite").objectStore("takes").add(t);
-    q.onsuccess = function(){res();};
-    q.onerror = function(){rej(q.error);};
-  });
-}
-function delTake(id){
-  if(!db){mem = mem.filter(function(t){return t.id!==id;}); return Promise.resolve();}
-  return new Promise(function(res,rej){
-    var q = db.transaction("takes","readwrite").objectStore("takes").delete(id);
-    q.onsuccess = function(){res();};
-    q.onerror = function(){rej(q.error);};
-  });
-}
+var sb = window.supabase.createClient(SB_URL, SB_KEY);
+var uid = null, takesCache = [], projCache = [], localDb = null;
+var rec = null, chunks = [], stream = null, t0 = 0, timer = null, burstTimer = null, burstDone = false, pending = null, wake = null;
 
 // helpers
 function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")||"untitled";}
 function fmt(s){s=Math.floor(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
 function extFor(m){return m.indexOf("mp4")>-1?"m4a":m.indexOf("ogg")>-1?"ogg":"webm";}
 function fileName(t){return "67-"+slug(t.project)+"-"+slug(t.style)+"-take"+t.take+"."+extFor(t.mime);}
-function show(id){["home","live","review"].forEach(function(x){$(x).classList.toggle("hidden",x!==id);});}
+function show(id){["login","home","live","review"].forEach(function(x){$(x).classList.toggle("hidden",x!==id);});}
 function download(blob,name){
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
 }
+function countFor(p){return takesCache.filter(function(t){return t.project===p;}).length;}
 
-// library
+// sign in
+function boot(){
+  sb.auth.getSession().then(function(r){
+    var s = r.data && r.data.session;
+    if(s && s.user && !s.user.is_anonymous){uid = s.user.id; show("home"); loadAll(); checkLocal();}
+    else show("login");
+  });
+}
+function signIn(){
+  var e = $("email").value.trim(), p = $("pw").value;
+  $("loginmsg").textContent = "";
+  if(!e || !p){$("loginmsg").textContent = "Enter email and password."; return;}
+  $("signin").disabled = true;
+  sb.auth.signInWithPassword({email:e,password:p}).then(function(r){
+    $("signin").disabled = false;
+    if(r.error){$("loginmsg").textContent = r.error.message; return;}
+    $("pw").value = "";
+    boot();
+  });
+}
+function signOut(){sb.auth.signOut().then(function(){uid = null; takesCache = []; projCache = []; show("login");});}
+
+// load and draw
+function loadAll(){
+  return Promise.all([
+    sb.from("idea67_projects").select("name,notes").order("name"),
+    sb.from("idea67_takes").select("*").order("created_at")
+  ]).then(function(r){
+    if(r[0].error || r[1].error){$("msg").textContent = "Could not load from the database."; return;}
+    projCache = r[0].data || []; takesCache = r[1].data || [];
+    renderProjects(); renderLib();
+  });
+}
+function allNames(){
+  var names = {};
+  projCache.forEach(function(p){names[p.name]=1;});
+  takesCache.forEach(function(t){names[t.project]=1;});
+  return Object.keys(names).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
+}
+function renderProjects(){
+  var names = allNames();
+  $("projlist").innerHTML = "";
+  names.forEach(function(n){var o = document.createElement("option"); o.value = n; $("projlist").appendChild(o);});
+  var pl = $("plist");
+  if(!names.length){pl.textContent = "No projects yet."; return;}
+  pl.innerHTML = "";
+  names.forEach(function(n){
+    var row = document.createElement("div"); row.className = "proj";
+    var s = document.createElement("span"); var c = countFor(n);
+    s.textContent = n+" ("+(c?c+" take"+(c===1?"":"s"):"no takes")+")";
+    var b = document.createElement("button"); b.className = "small"; b.textContent = "Pick";
+    b.onclick = function(){$("proj").value = n; window.scrollTo(0,0);};
+    row.appendChild(s); row.appendChild(b); pl.appendChild(row);
+  });
+}
 function renderLib(){
-  allTakes().then(function(list){
-    var names = {}; list.forEach(function(t){names[t.project]=1;});
-    $("projlist").innerHTML = Object.keys(names).map(function(n){return '<option value="'+n.replace(/"/g,"&quot;")+'">';}).join("");
-    var lib = $("lib");
-    if(!list.length){lib.textContent = "No takes yet."; return;}
-    lib.innerHTML = "";
-    Object.keys(names).sort().forEach(function(p){
-      var mine = list.filter(function(t){return t.project===p;}).sort(function(a,b){return a.take-b.take;});
-      var h = document.createElement("div");
-      h.style.marginTop = "12px";
-      h.innerHTML = "<strong></strong> <span class='meta'>"+mine.length+" take"+(mine.length===1?"":"s")+"</span>";
-      h.firstChild.textContent = p;
-      lib.appendChild(h);
-      mine.forEach(function(t){
-        var d = document.createElement("div"); d.className = "take";
-        var m = document.createElement("div"); m.className = "meta";
-        m.textContent = "Take "+t.take+", "+t.style+", "+fmt(t.duration)+(t.overtime>0?", "+Math.round(t.overtime)+"s over":"")+", "+t.date.slice(0,10);
-        var a = document.createElement("audio"); a.controls = true; a.preload = "none";
-        a.src = URL.createObjectURL(t.blob);
-        var b1 = document.createElement("button"); b1.className = "small"; b1.textContent = "Download";
-        b1.onclick = function(){download(t.blob,fileName(t));};
-        var b2 = document.createElement("button"); b2.className = "small"; b2.textContent = "Delete";
-        b2.onclick = function(){if(confirm("Delete this take?")) delTake(t.id).then(renderLib);};
-        d.appendChild(m); d.appendChild(a); d.appendChild(b1); d.appendChild(b2);
-        lib.appendChild(d);
-      });
+  var lib = $("lib");
+  if(!takesCache.length){lib.textContent = "No takes yet."; return;}
+  lib.innerHTML = "";
+  var players = {};
+  var names = {}; takesCache.forEach(function(t){names[t.project]=1;});
+  Object.keys(names).sort().forEach(function(p){
+    var mine = takesCache.filter(function(t){return t.project===p;}).sort(function(a,b){return a.take-b.take;});
+    var h = document.createElement("div");
+    h.style.marginTop = "12px";
+    var st = document.createElement("strong"); st.textContent = p;
+    var sp = document.createElement("span"); sp.className = "meta"; sp.textContent = " "+mine.length+" take"+(mine.length===1?"":"s");
+    h.appendChild(st); h.appendChild(sp); lib.appendChild(h);
+    mine.forEach(function(t){
+      var d = document.createElement("div"); d.className = "take";
+      var m = document.createElement("div"); m.className = "meta";
+      m.textContent = "Take "+t.take+", "+t.style+", "+fmt(t.duration_s)+(t.overtime_s>0?", "+Math.round(t.overtime_s)+"s over":"")+", "+String(t.created_at).slice(0,10);
+      var a = document.createElement("audio"); a.controls = true; a.preload = "none";
+      players[t.audio_path] = a;
+      var b1 = document.createElement("button"); b1.className = "small"; b1.textContent = "Download";
+      b1.onclick = function(){downloadTake(t);};
+      var b2 = document.createElement("button"); b2.className = "small"; b2.textContent = "Delete";
+      b2.onclick = function(){if(confirm("Delete this take?")) deleteTake(t);};
+      d.appendChild(m); d.appendChild(a); d.appendChild(b1); d.appendChild(b2);
+      lib.appendChild(d);
+    });
+  });
+  var paths = takesCache.map(function(t){return t.audio_path;});
+  sb.storage.from(BUCKET).createSignedUrls(paths,3600).then(function(r){
+    if(!r.data) return;
+    r.data.forEach(function(x){if(x.signedUrl && players[x.path]) players[x.path].src = x.signedUrl;});
+  });
+}
+function downloadTake(t){
+  return sb.storage.from(BUCKET).download(t.audio_path).then(function(r){if(r.data) download(r.data,fileName(t));});
+}
+function deleteTake(t){
+  sb.storage.from(BUCKET).remove([t.audio_path]).then(function(){
+    return sb.from("idea67_takes").delete().eq("id",t.id);
+  }).then(loadAll);
+}
+function exportAll(){
+  if(!takesCache.length) return;
+  var manifest = {app:"67 Idea Generator",exported:new Date().toISOString(),takes:takesCache.map(function(t){
+    return {file:fileName(t),project:t.project,style:t.style,take:t.take,date:t.created_at,durationSeconds:Math.round(t.duration_s*10)/10,overtimeSeconds:Math.round(t.overtime_s*10)/10};
+  })};
+  download(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),"67-idea-generator-manifest.json");
+  var chain = Promise.resolve();
+  takesCache.forEach(function(t){
+    chain = chain.then(function(){return downloadTake(t);}).then(function(){return new Promise(function(res){setTimeout(res,500);});});
+  });
+}
+
+// saving
+function saveTake(p){
+  var path = uid+"/"+Date.now()+"-"+fileName(p);
+  return sb.from("idea67_projects").upsert({name:p.project},{onConflict:"user_id,name",ignoreDuplicates:true}).then(function(r){
+    if(r.error) throw r.error;
+    return sb.storage.from(BUCKET).upload(path,p.blob,{contentType:p.mime});
+  }).then(function(r){
+    if(r.error) throw r.error;
+    return sb.from("idea67_takes").insert({project:p.project,style:p.style,take:p.take,duration_s:p.duration,overtime_s:p.overtime,mime:p.mime,audio_path:path,created_at:p.date});
+  }).then(function(r){
+    if(r.error) throw r.error;
+  });
+}
+function keep(){
+  var p = pending; if(!p) return;
+  $("keep").disabled = true; $("revmsg").textContent = "Saving...";
+  p.take = countFor(p.project)+1;
+  saveTake(p).then(function(){
+    pending = null; $("keep").disabled = false; $("revmsg").textContent = ""; $("revaud").removeAttribute("src");
+    show("home"); loadAll();
+  }).catch(function(){
+    $("keep").disabled = false; $("revmsg").textContent = "Saving failed. Tap Keep to try again.";
+  });
+}
+function drop(){
+  pending = null; $("revaud").removeAttribute("src"); $("revmsg").textContent = ""; show("home");
+}
+
+// takes saved on this phone by the first version
+function openLocal(){
+  return new Promise(function(res){
+    if(!window.indexedDB) return res(null);
+    var r = indexedDB.open("idea67",1);
+    r.onupgradeneeded = function(){r.result.createObjectStore("takes",{keyPath:"id",autoIncrement:true});};
+    r.onsuccess = function(){res(r.result);};
+    r.onerror = function(){res(null);};
+  });
+}
+function localTakes(){
+  return new Promise(function(res){
+    var q = localDb.transaction("takes").objectStore("takes").getAll();
+    q.onsuccess = function(){res(q.result || []);};
+    q.onerror = function(){res([]);};
+  });
+}
+function localDelete(id){
+  return new Promise(function(res){
+    var q = localDb.transaction("takes","readwrite").objectStore("takes").delete(id);
+    q.onsuccess = function(){res();}; q.onerror = function(){res();};
+  });
+}
+function checkLocal(){
+  openLocal().then(function(d){
+    if(!d) return;
+    localDb = d;
+    localTakes().then(function(list){
+      if(!list.length) return;
+      $("imp").textContent = "Upload "+list.length+" take"+(list.length===1?"":"s")+" saved on this phone";
+      $("imp").classList.remove("hidden");
     });
   });
 }
-function exportAll(){
-  allTakes().then(function(list){
-    if(!list.length) return;
-    var manifest = {app:"67 Idea Generator",exported:new Date().toISOString(),takes:list.map(function(t){
-      return {file:fileName(t),project:t.project,style:t.style,take:t.take,date:t.date,durationSeconds:Math.round(t.duration*10)/10,overtimeSeconds:Math.round(t.overtime*10)/10};
-    })};
-    download(new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"}),"67-idea-generator-manifest.json");
-    list.forEach(function(t,i){setTimeout(function(){download(t.blob,fileName(t));},500*(i+1));});
+function importLocal(){
+  $("imp").disabled = true;
+  localTakes().then(function(list){
+    var chain = Promise.resolve();
+    list.forEach(function(t){
+      chain = chain.then(function(){
+        t.take = countFor(t.project)+1;
+        return saveTake(t).then(function(){
+          takesCache.push({project:t.project});
+          return localDelete(t.id);
+        });
+      });
+    });
+    return chain;
+  }).then(function(){
+    $("imp").classList.add("hidden"); $("imp").disabled = false; loadAll();
+  }).catch(function(){
+    $("imp").disabled = false; $("msg").textContent = "Upload stopped. Tap the button to try again.";
   });
 }
 
@@ -193,7 +337,7 @@ function pickMime(){
 function startRec(){
   var name = $("proj").value.trim();
   $("msg").textContent = "";
-  if(!name){$("msg").textContent = "Type a project name first."; return;}
+  if(!name){$("msg").textContent = "Type or pick a project name first."; return;}
   if(!navigator.mediaDevices || !window.MediaRecorder){$("msg").textContent = "Recording is not supported here."; return;}
   navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
     stream = s; chunks = []; burstDone = false;
@@ -203,9 +347,9 @@ function startRec(){
     rec.onstop = function(){finish(name);};
     rec.start(1000);
     t0 = performance.now();
+    if(navigator.wakeLock) navigator.wakeLock.request("screen").then(function(w){wake = w;}).catch(function(){});
     buildBar();
     $("fill").style.width = "0%"; $("clock").textContent = "0:00"; $("over").textContent = "";
-    document.body.style.background = "";
     show("live");
     timer = setInterval(tick,100);
   }).catch(function(){
@@ -221,6 +365,7 @@ function tick(){
     $("over").textContent = "+"+Math.floor(s-LIMIT_SECONDS)+"s over";
   }
 }
+// the color wipe only changes the screen; the recorder keeps running underneath it
 function startBurst(){
   var el = $("strobe"), i = 0, began = performance.now();
   el.style.display = "block";
@@ -244,6 +389,7 @@ function stopRec(){
 }
 function finish(name){
   if(stream) stream.getTracks().forEach(function(t){t.stop();});
+  if(wake){wake.release().catch(function(){}); wake = null;}
   var mime = (rec && rec.mimeType) || "audio/webm";
   var blob = new Blob(chunks,{type:mime});
   pending.project = name; pending.style = $("style").value; pending.blob = blob; pending.mime = mime;
@@ -252,31 +398,18 @@ function finish(name){
   $("revmeta").textContent = name+", "+pending.style+", "+fmt(pending.duration)+(pending.overtime>0?", "+Math.round(pending.overtime)+"s over":"");
   show("review");
 }
-function keep(){
-  allTakes().then(function(list){
-    var n = list.filter(function(t){return t.project===pending.project;}).length+1;
-    pending.take = n;
-    return addTake(pending);
-  }).then(function(){
-    pending = null; $("revaud").removeAttribute("src");
-    show("home"); renderLib();
-  }).catch(function(){
-    $("msg").textContent = "Saving failed on this device.";
-    show("home");
-  });
-}
-function drop(){
-  pending = null; $("revaud").removeAttribute("src"); show("home");
-}
 
 // start up
 STYLES.forEach(function(s){var o = document.createElement("option"); o.value = s; o.textContent = s; $("style").appendChild(o);});
+$("signin").onclick = signIn;
+$("signout").onclick = signOut;
 $("rec").onclick = startRec;
 $("stop").onclick = stopRec;
 $("keep").onclick = keep;
 $("drop").onclick = drop;
 $("expall").onclick = exportAll;
-openDB().then(function(d){db = d;}).catch(function(){db = null;}).then(renderLib);
+$("imp").onclick = importLocal;
+boot();
 </script>
 </body>
 </html>
